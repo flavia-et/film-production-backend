@@ -1,10 +1,12 @@
 from fastapi import FastAPI, APIRouter, HTTPException
-from starlette.middleware.cors import CORSMiddleware
+#from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 from contextlib import asynccontextmanager
 from huggingface_hub import InferenceClient
 from fastapi.middleware.cors import CORSMiddleware
+from typing import List, Optional, Literal
+
 
 
 import os
@@ -13,7 +15,6 @@ import uuid
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -88,11 +89,14 @@ class RiskFlags(BaseModel):
     effort_payoff_mismatch: bool = False
 
 class BudgetImpact(BaseModel):
-    risk_driver: str
-    schedule_risk: str
-    estimated_time_buffer: str
-    estimated_cost_risk: str
-    confidence: str
+    risk_driver: List[str]
+    location_cost_level: Literal["low","medium","high"]
+    lighting_complexity: Literal["low","medium","high"]
+    performance_retakes_risk: Literal["low","medium","high"]
+    tech_setup_cost: Literal["low","medium","high"]
+    estimated_cost_risk: Optional[int] = None  # 1–10 score
+    confidence: Optional[int] = None  # 1–10
+
 
 class ScheduleImpact(BaseModel):
     extra_takes_likely: bool
@@ -169,6 +173,32 @@ def extract_json(text: str) -> dict:
 # AI ANALYSIS (HARDENED)
 # -------------------------------------------------------------------
 
+def calculate_budget_score(budget: BudgetImpact) -> int:
+    score = 1  # base risk
+
+    if budget.location_cost_level == "high":
+        score += 3
+    elif budget.location_cost_level == "medium":
+        score += 1
+
+    if budget.lighting_complexity == "high":
+        score += 2
+    elif budget.lighting_complexity == "medium":
+        score += 1
+
+    if budget.performance_retakes_risk == "high":
+        score += 2
+    elif budget.performance_retakes_risk == "medium":
+        score += 1
+
+    if budget.tech_setup_cost == "high":
+        score += 3
+    elif budget.tech_setup_cost == "medium":
+        score += 1
+
+    return min(score, 10)
+
+
 async def analyze_scene_with_hf(scene: Scene) -> SceneAnalysis:
     messages = [
         {
@@ -203,7 +233,14 @@ async def analyze_scene_with_hf(scene: Scene) -> SceneAnalysis:
     # ---------- SAFETY NET ----------
     try:
         data = extract_json(raw)
-        return SceneAnalysis(**data)
+        analysis = SceneAnalysis(**data)
+
+        if analysis.budget_impact:
+            analysis.budget_impact.estimated_cost_risk = calculate_budget_score(
+                analysis.budget_impact
+            )
+        
+        return analysis
 
     except Exception as e:
         logging.error("STRUCTURE FAILED – USING FALLBACK")
@@ -304,13 +341,5 @@ async def delete_scene(scene_id: str):
 # -------------------------------------------------------------------
 
 app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins="*",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 logging.basicConfig(level=logging.INFO)
