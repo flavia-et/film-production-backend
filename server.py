@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 from contextlib import asynccontextmanager
 from huggingface_hub import InferenceClient
+from fastapi.middleware.cors import CORSMiddleware
+
 
 import os
 import json
@@ -50,6 +52,15 @@ app = FastAPI(
     title="Pre-Production Guardrail API",
     lifespan=lifespan
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 api_router = APIRouter(prefix="/api")
 
