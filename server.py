@@ -33,7 +33,11 @@ if not MONGO_URL or not DB_NAME:
 mongo_client = AsyncIOMotorClient(MONGO_URL)
 db = mongo_client[DB_NAME]
 
-hf_client = InferenceClient()  # free tier, no key
+hf_client = InferenceClient(
+    provider="auto",
+    api_key=os.getenv("HF_TOKEN")
+)
+
 
 # -------------------------------------------------------------------
 # LIFESPAN
